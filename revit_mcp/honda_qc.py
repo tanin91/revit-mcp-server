@@ -257,6 +257,167 @@ def _source_cache():
         return {"available": False, "error": str(ex), "record_count": 0}
 
 
+
+def _source_cache_full():
+    """Load the latest source records produced by HondaSakura 05D Auto Fill."""
+    try:
+        appdata = os.environ.get("APPDATA", "")
+        p = os.path.join(appdata, "pyRevit", "Extensions", "HondaSakura.extension", "data", "equipment_source_cache.json")
+        if not os.path.exists(p):
+            return {"available": False, "path": p, "source_path": "", "records": []}
+        raw = open(p, "rb").read()
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            data = json.loads(raw.decode("cp932", "ignore"))
+        return {
+            "available": True,
+            "path": p,
+            "source_path": data.get("source_path", ""),
+            "records": data.get("records", []),
+        }
+    except Exception as ex:
+        return {"available": False, "error": str(ex), "source_path": "", "records": []}
+
+
+def _float_from_text(s):
+    if not s:
+        return None
+    text = u"{}".format(s).replace(",", "")
+    num = []
+    seen = False
+    for ch in text:
+        if ch.isdigit() or ch in ".-+":
+            num.append(ch); seen = True
+        elif seen:
+            break
+    try:
+        return float(u"".join(num)) if num else None
+    except Exception:
+        return None
+
+
+def _source_compare(doc, limit=500):
+    cache = _source_cache_full()
+    if not cache.get("available"):
+        return {
+            "available": False,
+            "message": "No HondaSakura equipment source cache. Run 05D Equipment Auto Fill first.",
+            "source_path": cache.get("source_path", ""),
+            "issues": [],
+        }
+
+    records = cache.get("records", [])
+    eqs = _equipment(doc)
+
+    src_by_code = {}
+    src_by_model = {}
+    for r in records:
+        code = _norm(r.get("code", ""))
+        model = _norm(r.get("model", ""))
+        if code:
+            src_by_code.setdefault(code, []).append(r)
+        if model:
+            src_by_model.setdefault(model, []).append(r)
+
+    matched_source_ids = set()
+    issues = []
+    match_count = 0
+
+    for el in eqs:
+        eid = _eid(el)
+        rev = {
+            "code": _param_instance_then_type(doc, el, CODE_KEYS),
+            "install_date": _param_instance_then_type(doc, el, DATE_KEYS),
+            "model": _param_instance_then_type(doc, el, MODEL_KEYS),
+            "power_supply": _param_instance_then_type(doc, el, POWER_SUPPLY_KEYS),
+            "power": _param_instance_then_type(doc, el, POWER_KEYS),
+            "flow": _param_instance_then_type(doc, el, FLOW_KEYS),
+        }
+
+        rec = None
+        why = ""
+        nc = _norm(rev["code"])
+        nm = _norm(rev["model"])
+        if nc and len(src_by_code.get(nc, [])) == 1:
+            rec = src_by_code[nc][0]
+            why = "EXACT_CODE"
+        elif nm and len(src_by_model.get(nm, [])) == 1:
+            rec = src_by_model[nm][0]
+            why = "UNIQUE_MODEL"
+
+        if rec is None:
+            if len(issues) < limit:
+                issues.append({
+                    "kind": "REVIT_NO_SOURCE_MATCH",
+                    "element_id": eid,
+                    "code": rev["code"],
+                    "model": rev["model"],
+                })
+            continue
+
+        match_count += 1
+        matched_source_ids.add(u"{}:{}".format(rec.get("source", ""), rec.get("source_id", "")))
+        diffs = []
+
+        if rec.get("code") and rev["code"] and _norm(rec.get("code")) != _norm(rev["code"]):
+            diffs.append({"field": "機器番号", "source": rec.get("code"), "revit": rev["code"]})
+        if rec.get("model") and rev["model"] and _norm(rec.get("model")) != _norm(rev["model"]):
+            diffs.append({"field": "型式", "source": rec.get("model"), "revit": rev["model"]})
+        if rec.get("power_supply") and rev["power_supply"] and _norm(rec.get("power_supply")) != _norm(rev["power_supply"]):
+            diffs.append({"field": "電源", "source": rec.get("power_supply"), "revit": rev["power_supply"]})
+
+        src_power = rec.get("power_kw")
+        rev_power = _float_from_text(rev["power"])
+        if src_power is not None and rev_power is not None:
+            tol = max(0.01, 0.03 * float(src_power))
+            if abs(float(src_power) - float(rev_power)) > tol:
+                diffs.append({"field": "消費電力", "source": src_power, "revit": rev_power, "tolerance": tol})
+
+        src_flow = rec.get("flow_m3h")
+        rev_flow = _float_from_text(rev["flow"])
+        if src_flow is not None and rev_flow is not None:
+            tol = max(5.0, 0.03 * float(src_flow))
+            if abs(float(src_flow) - float(rev_flow)) > tol:
+                diffs.append({"field": "風量", "source": src_flow, "revit": rev_flow, "tolerance": tol})
+
+        if diffs and len(issues) < limit:
+            issues.append({
+                "kind": "FIELD_MISMATCH",
+                "element_id": eid,
+                "match_rule": why,
+                "code": rev["code"],
+                "model": rev["model"],
+                "differences": diffs,
+            })
+
+    source_unmatched = []
+    for r in records:
+        sid = u"{}:{}".format(r.get("source", ""), r.get("source_id", ""))
+        if sid not in matched_source_ids:
+            source_unmatched.append({
+                "source_id": r.get("source_id"),
+                "source": r.get("source"),
+                "code": r.get("code", ""),
+                "model": r.get("model", ""),
+            })
+            if len(source_unmatched) >= limit:
+                break
+
+    return {
+        "available": True,
+        "source_path": cache.get("source_path", ""),
+        "source_record_count": len(records),
+        "revit_equipment_count": len(eqs),
+        "matched_count": match_count,
+        "issue_count": len(issues),
+        "issues": issues,
+        "source_unmatched_count": max(0, len(records) - len(matched_source_ids)),
+        "source_unmatched": source_unmatched,
+        "note": "Read-only QC. Match priority: exact 機器番号, then unique 型式. Run 05D first to refresh IFC/PDF/DXF/CSV source cache.",
+    }
+
+
 def register_honda_qc_routes(api):
     @api.route("/honda_qc_summary/", methods=["GET"])
     def honda_qc_summary(doc, request):
@@ -332,6 +493,19 @@ def register_honda_qc_routes(api):
                 "counts": {k: len(v) for k, v in fam.items()},
                 "families": {k: v[:100] for k, v in fam.items()},
             })
+        except Exception as ex:
+            return routes.make_response(data={"error": str(ex), "traceback": traceback.format_exc()}, status=500)
+
+
+    @api.route("/honda_qc_source_compare/", methods=["POST"])
+    def honda_qc_source_compare(doc, request):
+        try:
+            if not doc:
+                return routes.make_response(data={"error": "No active Revit document"}, status=503)
+            data = json.loads(request.data) if isinstance(request.data, str) else (request.data or {})
+            limit = int(data.get("limit", 500))
+            out = _source_compare(doc, limit)
+            return routes.make_response(data={"status": "success", "mode": "READ_ONLY_QC", "result": out})
         except Exception as ex:
             return routes.make_response(data={"error": str(ex), "traceback": traceback.format_exc()}, status=500)
 
