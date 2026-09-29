@@ -1,131 +1,91 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
-title Honda Sakura Revit MCP Installer
+setlocal EnableExtensions
+title Honda Sakura MCP QC Installer
 
 set "SRC=%~dp0"
-set "EXTROOT=%APPDATA%\pyRevit\Extensions"
-set "EXTDST=%EXTROOT%\mcp-server-for-revit-python.extension"
 set "SERVER=%LOCALAPPDATA%\HondaSakuraRevitMCP"
-set "LOG=%TEMP%\honda_mcp_install.log"
 
 echo ==========================================
-echo   HONDA SAKURA - REVIT MCP INSTALLER
+echo   HONDA SAKURA - MCP QC INSTALLER
 echo ==========================================
 echo.
-echo Python/pyRevit = production core
-echo MCP = READ-ONLY QC
+echo pyRevit/Python = CORE build 3D
+echo MCP = READ-ONLY QC from JSON snapshot
+echo NO pyRevit Routes required.
+echo NO Revit startup extension installed.
 echo.
-
-tasklist /FI "IMAGENAME eq Revit.exe" | find /I "Revit.exe" >nul
-if not errorlevel 1 (
-    echo ERROR: Revit is running.
-    echo Please CLOSE ALL Revit windows first, then run this installer again.
-    echo.
-    pause
-    exit /b 2
-)
 
 where uv >nul 2>&1
 if errorlevel 1 (
-    echo [1/5] uv not found. Installing uv...
+    echo [1/4] uv not found. Installing uv...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
     set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%PATH%"
 ) else (
-    echo [1/5] uv OK
+    echo [1/4] uv OK
 )
 
 where uv >nul 2>&1
 if errorlevel 1 (
     echo ERROR: uv installation failed.
-    echo Install manually: https://docs.astral.sh/uv/getting-started/installation/
     pause
-    exit /b 3
+    exit /b 1
 )
 
-echo [2/5] Installing pyRevit route extension...
-if not exist "%EXTROOT%" mkdir "%EXTROOT%"
-if not exist "%EXTDST%" mkdir "%EXTDST%"
-
-copy /Y "%SRC%startup.py" "%EXTDST%\startup.py" >nul
-if errorlevel 1 goto :copyfail
-
-copy /Y "%SRC%extension.json" "%EXTDST%\extension.json" >nul
-if errorlevel 1 goto :copyfail
-
-if exist "%EXTDST%\revit_mcp" rmdir /S /Q "%EXTDST%\revit_mcp"
-xcopy "%SRC%revit_mcp" "%EXTDST%\revit_mcp\" /E /I /Y >nul
-if errorlevel 1 goto :copyfail
-
-echo [3/5] Installing local MCP server...
+echo [2/4] Installing standalone MCP QC server...
 if not exist "%SERVER%" mkdir "%SERVER%"
 copy /Y "%SRC%main_honda_qc.py" "%SERVER%\main_honda_qc.py" >nul
 copy /Y "%SRC%pyproject.toml" "%SERVER%\pyproject.toml" >nul
-copy /Y "%SRC%uv.lock" "%SERVER%\uv.lock" >nul 2>nul
-copy /Y "%SRC%requirements.txt" "%SERVER%\requirements.txt" >nul 2>nul
-if exist "%SERVER%\tools" rmdir /S /Q "%SERVER%\tools"
-xcopy "%SRC%tools" "%SERVER%\tools\" /E /I /Y >nul
-if errorlevel 1 goto :copyfail
+if exist "%SRC%uv.lock" copy /Y "%SRC%uv.lock" "%SERVER%\uv.lock" >nul
 
-echo [4/5] Installing Python dependencies...
+echo [3/4] Installing dependencies...
 pushd "%SERVER%"
 uv sync
 if errorlevel 1 (
     popd
     echo ERROR: uv sync failed.
     pause
-    exit /b 4
+    exit /b 2
 )
 popd
 
-echo [5/5] Creating launchers...
-set "LAUNCH=%USERPROFILE%\Desktop\START_HONDA_REVIT_MCP.bat"
+echo [4/4] Creating desktop launchers...
+set "LAUNCH=%USERPROFILE%\Desktop\START_HONDA_MCP_QC.bat"
 (
 echo @echo off
-echo title Honda Sakura Revit MCP
+echo title Honda Sakura MCP QC
 echo cd /d "%SERVER%"
-echo set REVIT_HOST=localhost
 echo uv run main_honda_qc.py --combined
 echo pause
 ) > "%LAUNCH%"
 
-set "TESTER=%USERPROFILE%\Desktop\TEST_HONDA_REVIT_MCP.bat"
+set "TESTER=%USERPROFILE%\Desktop\TEST_HONDA_MCP_QC.bat"
 (
 echo @echo off
-echo title Honda Sakura MCP Test
-echo echo Testing Revit Routes...
-echo powershell -NoProfile -Command "try { $r=Invoke-RestMethod -Uri 'http://localhost:48884/revit_mcp/status/' -TimeoutSec 5; $r ^| ConvertTo-Json -Depth 4 } catch { Write-Host 'FAIL: Revit Routes not reachable' -ForegroundColor Red }"
+echo title Honda Sakura MCP QC Test
+echo set "SNAP=%%APPDATA%%\pyRevit\Extensions\HondaSakura.extension\data\mcp_qc_snapshot.json"
+echo if not exist "%%SNAP%%" ^(
+echo   echo FAIL: snapshot not found.
+echo   echo Open Revit and run: Honda Sakura ^> QC ^> 99 MCP QC Snapshot
+echo   pause
+echo   exit /b 1
+echo ^)
+echo echo Snapshot found:
+echo echo %%SNAP%%
 echo echo.
-echo echo Testing Honda QC...
-echo powershell -NoProfile -Command "try { $r=Invoke-RestMethod -Uri 'http://localhost:48884/revit_mcp/honda_qc_summary/' -TimeoutSec 15; $r ^| ConvertTo-Json -Depth 6 } catch { Write-Host 'FAIL: Honda QC route not reachable' -ForegroundColor Red }"
+echo echo Starting HTTP test requires START_HONDA_MCP_QC.bat to be running.
+echo powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8000/mcp' -Method Get -TimeoutSec 5 ^| Out-Null; Write-Host 'MCP port 8000 reachable' -ForegroundColor Green } catch { Write-Host 'If START_HONDA_MCP_QC is running, this client may require POST/streamable HTTP. Server install itself is OK if snapshot exists.' -ForegroundColor Yellow }"
 echo pause
 ) > "%TESTER%"
 
 echo.
-echo ==========================================
 echo INSTALL COMPLETE
-echo ==========================================
 echo.
-echo 1. Open Revit.
-echo 2. pyRevit ^> Settings ^> Routes ^> Enable Routes Server.
-echo 3. Open project.
-echo 4. Run START_HONDA_REVIT_MCP.bat on Desktop.
-echo 5. Run TEST_HONDA_REVIT_MCP.bat.
+echo IMPORTANT:
+echo 1. In pyRevit Settings, Routes can stay OFF.
+echo 2. Open Revit normally.
+echo 3. Run Honda Sakura ^> QC ^> 99 MCP QC Snapshot.
+echo 4. Start Desktop: START_HONDA_MCP_QC.bat
 echo.
-echo Revit Routes: http://localhost:48884/revit_mcp/status/
-echo MCP HTTP:     http://localhost:8000/mcp
+echo MCP endpoint: http://localhost:8000/mcp
 echo.
 pause
-exit /b 0
-
-:copyfail
-echo.
-echo ERROR: copy failed.
-echo Source: "%SRC%"
-echo Extension: "%EXTDST%"
-echo Server: "%SERVER%"
-echo.
-echo Common cause: Revit/pyRevit still open or antivirus blocks AppData copy.
-echo Close Revit and retry.
-echo.
-pause
-exit /b 5
