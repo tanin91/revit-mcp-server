@@ -58,7 +58,7 @@ if errorlevel 1 goto :copyfail
 
 echo [3/5] Installing local MCP server...
 if not exist "%SERVER%" mkdir "%SERVER%"
-copy /Y "%SRC%main.py" "%SERVER%\main.py" >nul
+copy /Y "%SRC%main_honda_qc.py" "%SERVER%\main_honda_qc.py" >nul
 copy /Y "%SRC%pyproject.toml" "%SERVER%\pyproject.toml" >nul
 copy /Y "%SRC%uv.lock" "%SERVER%\uv.lock" >nul 2>nul
 copy /Y "%SRC%requirements.txt" "%SERVER%\requirements.txt" >nul 2>nul
@@ -84,7 +84,7 @@ echo @echo off
 echo title Honda Sakura Revit MCP
 echo cd /d "%SERVER%"
 echo set REVIT_HOST=localhost
-echo uv run main.py --combined
+echo uv run main_honda_qc.py --combined
 echo pause
 ) > "%LAUNCH%"
 
