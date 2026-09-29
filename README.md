@@ -281,3 +281,38 @@ Contributions are welcome! Feel free to submit pull requests or open issues.
 ## License
 
 MIT
+
+
+## Honda Sakura / TFAS QC integration
+
+This repository now includes a read-only QC layer for the Honda Sakura TFAS Python core.
+
+Architecture:
+
+```
+CADWe'll Tfas IFC / PDF / DXF
+        |
+        v
+HondaSakura pyRevit Python Core
+(Pipe / Duct / Terminal / Equipment)
+        |
+        v
+Native Revit model
+        |
+        v
+Revit MCP QC
+  - honda_qc_summary
+  - honda_qc_network
+  - honda_qc_equipment
+  - honda_qc_family_priority
+```
+
+The MCP layer is intentionally **read-only for QC**. Production model creation remains in the HondaSakura Python/pyRevit engine.
+
+Typical flow:
+
+1. Run HondaSakura Python build tools.
+2. Start Revit MCP.
+3. Ask the MCP client to run `honda_qc_summary`.
+4. Drill down with `honda_qc_network(domain="pipe")`, `honda_qc_network(domain="duct")`, or `honda_qc_equipment`.
+5. Fix issues through the normal HondaSakura Dry Run / Approval / Apply workflow.
