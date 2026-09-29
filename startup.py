@@ -105,6 +105,10 @@ def register_routes():
 
         register_document_routes(api)
 
+        from revit_mcp.honda_qc import register_honda_qc_routes
+
+        register_honda_qc_routes(api)
+
         logger.info("All MCP routes registered successfully")
 
     except Exception as e:
