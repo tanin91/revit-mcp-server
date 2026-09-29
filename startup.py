@@ -1,120 +1,42 @@
 # -*- coding: UTF-8 -*-
 """
-Revit MCP Extension Startup
-Registers all MCP routes and initializes the API
+Honda Sakura Revit MCP startup.
+SAFE MODE: register READ-ONLY QC routes only.
+Python/pyRevit HondaSakura remains the production core.
 """
 
 from pyrevit import routes
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
-
-# Initialize the main API
 api = routes.API("revit_mcp")
 
 
 def register_routes():
-    """Register all MCP route modules"""
+    errors = []
+
     try:
-        # Import and register status routes
         from revit_mcp.status import register_status_routes
-
         register_status_routes(api)
+        logger.info("Honda MCP status route registered")
+    except Exception as ex:
+        errors.append("status: {}".format(str(ex)))
+        logger.error("Honda MCP status route failed: {}".format(traceback.format_exc()))
 
-        from revit_mcp.model_info import register_model_info_routes
-
-        register_model_info_routes(api)
-
-        from revit_mcp.views import register_views_routes
-
-        register_views_routes(api)
-
-        from revit_mcp.placement import register_placement_routes
-
-        register_placement_routes(api)
-
-        from revit_mcp.colors import register_color_routes
-
-        register_color_routes(api)
-
-        from revit_mcp.code_execution import register_code_execution_routes
-
-        register_code_execution_routes(api)
-
-        from revit_mcp.building import register_building_routes
-
-        register_building_routes(api)
-
-        from revit_mcp.editing import register_editing_routes
-
-        register_editing_routes(api)
-
-        from revit_mcp.structure import register_structure_routes
-
-        register_structure_routes(api)
-
-        from revit_mcp.annotation import register_annotation_routes
-
-        register_annotation_routes(api)
-
-        from revit_mcp.analysis import register_analysis_routes
-
-        register_analysis_routes(api)
-
-        from revit_mcp.documentation import register_documentation_routes
-
-        register_documentation_routes(api)
-
-        from revit_mcp.rooms import register_room_routes
-
-        register_room_routes(api)
-
-        from revit_mcp.view_management import register_view_management_routes
-
-        register_view_management_routes(api)
-
-        from revit_mcp.tags import register_tag_routes
-
-        register_tag_routes(api)
-
-        from revit_mcp.transforms import register_transform_routes
-
-        register_transform_routes(api)
-
-        from revit_mcp.mep import register_mep_routes
-
-        register_mep_routes(api)
-
-        from revit_mcp.parameters import register_parameter_routes
-
-        register_parameter_routes(api)
-
-        from revit_mcp.interop import register_interop_routes
-
-        register_interop_routes(api)
-
-        from revit_mcp.detail import register_detail_routes
-
-        register_detail_routes(api)
-
-        from revit_mcp.clash import register_clash_routes
-
-        register_clash_routes(api)
-
-        from revit_mcp.document import register_document_routes
-
-        register_document_routes(api)
-
+    try:
         from revit_mcp.honda_qc import register_honda_qc_routes
-
         register_honda_qc_routes(api)
+        logger.info("Honda Sakura QC routes registered")
+    except Exception as ex:
+        errors.append("honda_qc: {}".format(str(ex)))
+        logger.error("Honda Sakura QC routes failed: {}".format(traceback.format_exc()))
 
-        logger.info("All MCP routes registered successfully")
+    # Never raise during Revit startup. A failed optional route must not crash Revit.
+    if errors:
+        logger.error("Honda MCP started with route errors: {}".format(" | ".join(errors)))
+    else:
+        logger.info("Honda MCP SAFE MODE started successfully")
 
-    except Exception as e:
-        logger.error("Failed to register MCP routes: %s", str(e))
-        raise
 
-
-# Register all routes when the extension loads
 register_routes()
