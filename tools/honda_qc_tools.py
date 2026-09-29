@@ -64,3 +64,30 @@ def register_honda_qc_tools(mcp, revit_get, revit_post, revit_image=None):
         """
         response = await revit_get("/honda_qc_family_priority/", ctx)
         return format_response(response)
+
+
+    @mcp.tool()
+    async def honda_qc_source_compare(
+        limit: int = 500,
+        ctx: Context = None,
+    ) -> str:
+        """Compare the latest HondaSakura IFC/PDF/DXF/CSV equipment source cache
+        against the active Revit model and return exact Revit ElementIds for issues.
+
+        Matching priority:
+        1) exact 機器番号
+        2) unique 型式
+
+        Reports:
+        - Revit equipment with no source match
+        - field mismatches for 機器番号 / 型式 / 電源 / 消費電力 / 風量
+        - source records not represented in Revit
+
+        Read-only. Run HondaSakura 05D first to refresh the source cache.
+        """
+        response = await revit_post(
+            "/honda_qc_source_compare/",
+            {"limit": limit},
+            ctx,
+        )
+        return format_response(response)
